@@ -1,0 +1,15 @@
+{
+    "name": "houdini_mcp_server",
+    "version": "0.1.0",
+    "description": "MCP Server for Houdini integration with OpenCode",
+    "path": "$HOUDINI_PACKAGE_PATH",
+    "load_package_once": true,
+    "env": [
+        {
+            "PYTHONPATH": {
+                "value": "$HOUDINI_PACKAGE_PATH/python",
+                "method": "prepend"
+            }
+        }
+    ]
+}
