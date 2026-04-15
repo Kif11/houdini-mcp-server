@@ -245,6 +245,14 @@ def main():
         print("The 'hou' module is not available in this Python environment.", file=sys.stderr)
         sys.exit(1)
     
+    # Initialize Houdini in batch mode (no UI required)
+    # This allows the server to work even when launched via hython
+    try:
+        if not hou.isUIAvailable():
+            print("Running in headless mode (no UI)", file=sys.stderr)
+    except:
+        pass
+    
     server = HoudiniMCPServer()
     asyncio.run(server.run())
 
