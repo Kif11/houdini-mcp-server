@@ -10,6 +10,7 @@ import json
 import sys
 from io import StringIO
 import threading
+import socket
 
 class HoudiniRPCHandler(BaseHTTPRequestHandler):
     """Handle RPC requests from the MCP server"""
@@ -85,19 +86,93 @@ class HoudiniRPCHandler(BaseHTTPRequestHandler):
         }
 
 
-def start_rpc_server(port=9876):
+class StoppableHTTPServer(HTTPServer):
+    """HTTPServer with proper shutdown support"""
+    
+    def __init__(self, *args, **kwargs):
+        HTTPServer.__init__(self, *args, **kwargs)
+        self._stop_event = threading.Event()
+    
+    def serve_forever_stoppable(self):
+        """Serve requests until stop() is called"""
+        while not self._stop_event.is_set():
+            self.handle_request()
+    
+    def stop(self):
+        """Stop the server"""
+        self._stop_event.set()
+        # Make a dummy request to unblock handle_request()
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(self.server_address)
+            sock.close()
+        except:
+            pass
+
+
+def start_rpc_server(port=9876, server_holder=None):
     """Start the HTTP RPC server"""
-    server = HTTPServer(('localhost', port), HoudiniRPCHandler)
-    print(f"✓ Houdini RPC Service started on http://localhost:{port}")
-    print("  MCP Server can now connect to this Houdini session")
-    server.serve_forever()
+    server = StoppableHTTPServer(('localhost', port), HoudiniRPCHandler)
+    
+    # Store server reference if holder provided
+    if server_holder is not None:
+        server_holder['instance'] = server
+    
+    print(f"Houdini MCP RPC Service started on http://localhost:{port}")
+    
+    # Use stoppable serve_forever
+    server.serve_forever_stoppable()
+    
+    # Clean up when stopped
+    server.server_close()
 
 
 def start_rpc_server_thread(port=9876):
     """Start the RPC server in a background thread"""
-    thread = threading.Thread(target=start_rpc_server, args=(port,), daemon=True)
+    # Create a holder dict to store the server instance
+    server_holder = {}
+    
+    thread = threading.Thread(
+        target=start_rpc_server, 
+        args=(port, server_holder), 
+        daemon=True
+    )
     thread.start()
-    return thread
+    
+    # Wait a bit for server to start
+    import time
+    time.sleep(0.1)
+    
+    # Store both thread and server holder
+    return {
+        'thread': thread,
+        'server_holder': server_holder,
+        'port': port
+    }
+
+
+def stop_rpc_server(server_info):
+    """Stop the RPC server"""
+    if not isinstance(server_info, dict):
+        print("Invalid server info")
+        return False
+    
+    server_holder = server_info.get('server_holder', {})
+    server = server_holder.get('instance')
+    
+    if server:
+        server.stop()
+        
+        # Wait for thread to finish
+        thread = server_info.get('thread')
+        if thread:
+            thread.join(timeout=2.0)
+        
+        print("MCP RPC Service stopped")
+        return True
+    
+    print("No active server found")
+    return False
 
 
 # When run as a script or shelf tool
