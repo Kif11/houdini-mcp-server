@@ -17,14 +17,14 @@ This server runs within Houdini's Python environment and provides access to Houd
 Houdini uses its own Python installation. You need to install the MCP SDK into Houdini's Python:
 
 ```bash
-# On macOS/Linux - find Houdini's Python (usually in /Applications/Houdini/HoudiniX.X.XXX/Frameworks/Python.framework/Versions/X.X/bin/python3)
-# Or use hython which is Houdini's Python executable
+# Tested on macOS with Houdini 20.5.613
+# Find Houdini's Python executable (hython)
 
-# Install MCP using Houdini's pip
-/Applications/Houdini/Houdini20.5.*/Frameworks/Python.framework/Versions/Current/bin/python3 -m pip install mcp
-
-# Alternative: use hython if it's in your PATH
+# Install MCP using hython
 hython -m pip install mcp
+
+# Or use the full path:
+/Applications/Houdini/Houdini20.5.613/Frameworks/Houdini.framework/Versions/20.5/Resources/bin/hython -m pip install mcp
 ```
 
 ### 2. Install the Package
@@ -153,11 +153,29 @@ houdini-mcp-server/
 
 ### Running Tests
 
-Start Houdini and the server should be available through the MCP protocol. You can test it by:
+The server has been tested and verified working with Houdini 20.5.613 on macOS.
 
-1. Opening Houdini
-2. Using OpenCode with the MCP server configured
-3. Sending commands through OpenCode
+To run the included test suite:
+
+```bash
+# Test server initialization
+hython houdini-mcp-server/test_server.py
+
+# Test all tools
+hython houdini-mcp-server/test_tools.py
+```
+
+**Test Results (Verified):**
+- ✅ execute_python: Successfully executes Python code in Houdini context
+- ✅ get_scene_info: Returns complete scene information including frame range, selected nodes, etc.
+- ✅ evaluate_expression: Evaluates both Python and Hscript expressions
+- ✅ Node creation: Can create and manipulate Houdini nodes programmatically
+
+You can also test it through OpenCode once configured:
+
+1. Configure OpenCode with the MCP server (see above)
+2. Restart OpenCode to load the server
+3. Send commands like "Create a geometry node in Houdini" or "What's the current frame?"
 
 ### Adding New Tools
 
