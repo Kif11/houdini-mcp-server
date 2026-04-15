@@ -1,0 +1,5 @@
+# Python version: see .python-version file (requires Python 3.11+)
+# Tested with Python 3.14.3
+
+mcp==1.27.0
+httpx==0.28.1
