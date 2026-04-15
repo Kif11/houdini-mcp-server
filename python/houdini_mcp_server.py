@@ -1,37 +1,35 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-Houdini MCP Server - Model Context Protocol server for Houdini integration
-Runs within Houdini's Python environment and provides access to Houdini APIs
+Houdini MCP Server
+Model Context Protocol server for Houdini integration.
+
+Uses HTTP bridge architecture to work around Houdini's asyncio incompatibility:
+- Runs with standard Python (handles MCP protocol)
+- Communicates with Houdini via HTTP RPC service
 """
 
 import asyncio
 import json
 import sys
-import traceback
-from typing import Any, Dict, Optional
+import httpx
+from typing import Any, Dict
 
-try:
-    import hou
-    HOU_AVAILABLE = True
-except ImportError:
-    HOU_AVAILABLE = False
-    print("Warning: hou module not available. Server must run within Houdini.", file=sys.stderr)
-
-# MCP SDK imports
 try:
     from mcp.server import Server
-    from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+    from mcp.types import Tool, TextContent
     import mcp.server.stdio
 except ImportError:
     print("Error: MCP SDK not installed. Run: pip install mcp", file=sys.stderr)
     sys.exit(1)
 
 
-class HoudiniMCPServer:
-    """MCP Server for Houdini integration"""
+class HoudiniMCPServerHTTP:
+    """MCP Server that connects to Houdini via HTTP"""
     
-    def __init__(self):
+    def __init__(self, houdini_url="http://localhost:9876"):
         self.server = Server("houdini-mcp-server")
+        self.houdini_url = houdini_url
+        self.http_client = None
         self.setup_handlers()
         
     def setup_handlers(self):
@@ -54,12 +52,6 @@ class HoudiniMCPServer:
                             "code": {
                                 "type": "string",
                                 "description": "Python code to execute in Houdini context"
-                            },
-                            "return_type": {
-                                "type": "string",
-                                "enum": ["auto", "string", "json"],
-                                "description": "How to format the return value (default: auto)",
-                                "default": "auto"
                             }
                         },
                         "required": ["code"]
@@ -82,104 +74,39 @@ class HoudiniMCPServer:
         async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             """Handle tool calls"""
             
-            if not HOU_AVAILABLE:
+            try:
+                # Call the Houdini RPC service
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        self.houdini_url,
+                        json={"method": name, "params": arguments}
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                
+                # Format the response
+                if 'error' in result:
+                    return [TextContent(type="text", text=f"Error: {result['error']}")]
+                elif 'output' in result and 'result' in result:
+                    # execute_python response
+                    text = result['output']
+                    if result['result']:
+                        text += f"\nResult: {result['result']}"
+                    return [TextContent(type="text", text=text or "Code executed successfully")]
+                elif 'result' in result:
+                    return [TextContent(type="text", text=str(result['result']))]
+                else:
+                    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+                
+            except httpx.ConnectError:
                 return [TextContent(
                     type="text",
-                    text="Error: hou module not available. Server must run within Houdini."
+                    text=f"Error: Cannot connect to Houdini RPC service at {self.houdini_url}\n"
+                         f"Make sure Houdini is running and the RPC service is started.\n"
+                         f"Run this in Houdini's Python shell: execfile('{sys.path[0]}/houdini_rpc_service.py')"
                 )]
-            
-            try:
-                if name == "execute_python":
-                    result = await self._execute_python(arguments)
-                elif name == "get_scene_info":
-                    result = await self._get_scene_info(arguments)
-                else:
-                    result = f"Error: Unknown tool '{name}'"
-                
-                return [TextContent(type="text", text=str(result))]
-                
             except Exception as e:
-                error_msg = f"Error executing {name}:\n{traceback.format_exc()}"
-                return [TextContent(type="text", text=error_msg)]
-    
-    async def _execute_python(self, args: Dict[str, Any]) -> str:
-        """Execute Python code in Houdini context"""
-        code = args.get("code", "")
-        return_type = args.get("return_type", "auto")
-        
-        if not code:
-            return "Error: No code provided"
-        
-        # Create execution context with hou module
-        exec_globals = {
-            "hou": hou,
-            "__name__": "__main__",
-        }
-        exec_locals = {}
-        
-        # Capture stdout
-        from io import StringIO
-        old_stdout = sys.stdout
-        sys.stdout = captured_output = StringIO()
-        
-        try:
-            # Execute the code
-            exec(code, exec_globals, exec_locals)
-            
-            # Get captured output
-            output = captured_output.getvalue()
-            
-            # Try to get the result of the last expression
-            result = exec_locals.get("_", None)
-            
-            # Format output
-            if output and result is not None:
-                final_output = f"{output}\nResult: {result}"
-            elif output:
-                final_output = output
-            elif result is not None:
-                final_output = str(result)
-            else:
-                final_output = "Code executed successfully (no output)"
-            
-            # Format based on return_type
-            if return_type == "json":
-                try:
-                    return json.dumps({"output": output, "result": result})
-                except:
-                    return json.dumps({"output": output, "result": str(result)})
-            else:
-                return final_output
-                
-        finally:
-            sys.stdout = old_stdout
-    
-    async def _get_scene_info(self, args: Dict[str, Any]) -> str:
-        """Get current Houdini scene information"""
-        info = {
-            "hip_file": hou.hipFile.path(),
-            "hip_name": hou.hipFile.basename(),
-            "is_saved": not hou.hipFile.hasUnsavedChanges(),
-            "frame_range": {
-                "start": hou.playbar.playbackRange()[0],
-                "end": hou.playbar.playbackRange()[1],
-                "current": hou.frame()
-            },
-            "fps": hou.fps(),
-            "selected_nodes": [node.path() for node in hou.selectedNodes()],
-            "pwd": hou.pwd().path() if hou.pwd() else "/",
-            "houdini_version": hou.applicationVersionString(),
-        }
-        
-        # Try to get current desktop
-        try:
-            desktop = hou.ui.curDesktop()
-            if desktop:
-                info["current_desktop"] = desktop.name()
-        except:
-            pass
-        
-        return json.dumps(info, indent=2)
+                return [TextContent(type="text", text=f"Error: {str(e)}")]
     
     async def run(self):
         """Run the MCP server using stdio transport"""
@@ -195,20 +122,12 @@ class HoudiniMCPServer:
 
 def main():
     """Main entry point"""
-    if not HOU_AVAILABLE:
-        print("Error: This server must be run from within Houdini.", file=sys.stderr)
-        print("The 'hou' module is not available in this Python environment.", file=sys.stderr)
-        sys.exit(1)
+    houdini_url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:9876"
     
-    # Initialize Houdini in batch mode (no UI required)
-    # This allows the server to work even when launched via hython
-    try:
-        if not hou.isUIAvailable():
-            print("Running in headless mode (no UI)", file=sys.stderr)
-    except:
-        pass
+    print(f"Starting Houdini MCP Server (HTTP Bridge)", file=sys.stderr)
+    print(f"Connecting to Houdini RPC at: {houdini_url}", file=sys.stderr)
     
-    server = HoudiniMCPServer()
+    server = HoudiniMCPServerHTTP(houdini_url)
     asyncio.run(server.run())
 
 

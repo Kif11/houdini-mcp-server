@@ -1,83 +1,51 @@
 # Houdini MCP Server
 
-Model Context Protocol (MCP) server for integrating Houdini with OpenCode and other MCP clients.
-
-This server runs within Houdini's Python environment and provides access to Houdini's APIs through the MCP protocol.
+Minimal Model Context Protocol (MCP) server for integrating Houdini with OpenCode and other MCP clients.
 
 ## Features
 
 - **execute_python**: Execute arbitrary Python code within Houdini's context with full access to the `hou` module
-- **get_scene_info**: Get information about the current Houdini scene
+- **get_scene_info**: Get information about the current Houdini scene (hip file, frame range, selected nodes, etc.)
 
 ## Architecture
 
-Due to Houdini's custom asyncio implementation being incompatible with the MCP SDK, this server uses an HTTP bridge architecture:
+Due to Houdini 20.5's custom asyncio implementation being incompatible with the MCP SDK, this server uses an HTTP bridge:
 
 ```
-OpenCode ←→ MCP Server (HTTP Bridge) ←→ Houdini RPC Service ←→ Houdini
-         stdio                  HTTP                    Python API
+OpenCode ←→ MCP Server ←→ HTTP ←→ RPC Service ←→ Houdini
+         stdio      (venv)     :9876    (inside Houdini)
 ```
 
-- **MCP Server** (`houdini_mcp_server_http.py`) - Runs with standard Python, handles MCP protocol
-- **Houdini RPC Service** (`houdini_rpc_service.py`) - Runs inside Houdini, executes commands
+- **MCP Server** (`houdini_mcp_server.py`) - Runs in standard Python venv, handles MCP protocol via stdio
+- **RPC Service** (`houdini_rpc_service.py`) - Runs inside Houdini on port 9876, executes code with `hou` module
 
-## Installation
+## Setup (3 steps)
 
-### 1. Install MCP SDK in Houdini's Python
-
-Houdini uses its own Python installation. You need to install the MCP SDK into Houdini's Python:
+### 1. Create Python Virtual Environment
 
 ```bash
-# Tested on macOS with Houdini 20.5.613
-# Find Houdini's Python executable (hython)
-
-# Install MCP using hython
-hython -m pip install mcp
-
-# Or use the full path:
-/Applications/Houdini/Houdini20.5.613/Frameworks/Houdini.framework/Versions/20.5/Resources/bin/hython -m pip install mcp
+cd /Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server
+python3 -m venv venv
+source venv/bin/activate
+pip install mcp httpx
+deactivate
 ```
 
-### 2. Install the Package
-
-Create a symlink from Houdini's packages directory to this package:
+### 2. Symlink Houdini Package
 
 ```bash
-# From the houdini-mcp-server directory
 ln -s "$(pwd)/houdini_mcp_server.json" "$HOME/Library/Preferences/houdini/20.5/packages/houdini_mcp_server.json"
 ```
 
-Or manually copy `houdini_mcp_server.json` to `$HOME/Library/Preferences/houdini/20.5/packages/`
-
 ### 3. Configure OpenCode
 
-Add the server to your OpenCode MCP settings. Open your OpenCode settings and add:
+Edit `~/.config/opencode/opencode.json`:
 
 ```json
 {
   "mcpServers": {
     "houdini": {
-      "command": "/Applications/Houdini/Houdini20.5.*/Frameworks/Python.framework/Versions/Current/bin/python3",
-      "args": [
-        "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/python/houdini_mcp_server.py"
-      ],
-      "env": {
-        "HOUDINI_PATH": "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server;&"
-      }
-    }
-  }
-}
-```
-
-**Important**: Replace `YOUR_USERNAME` and adjust the Houdini version path as needed.
-
-Alternative using `hython`:
-
-```json
-{
-  "mcpServers": {
-    "houdini": {
-      "command": "hython",
+      "command": "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/venv/bin/python",
       "args": [
         "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/python/houdini_mcp_server.py"
       ]
@@ -86,132 +54,120 @@ Alternative using `hython`:
 }
 ```
 
+Replace `YOUR_USERNAME` with your actual username.
+
 ## Usage
 
-Once configured, you can interact with Houdini from OpenCode:
+### Start RPC Service in Houdini
 
-### Execute Python Code
+Before using the MCP server, you must start the RPC service inside Houdini. Copy and paste this code into the Houdini Python Shell:
 
-```
-Execute this Python code in Houdini:
-node = hou.node('/obj').createNode('geo', 'my_geometry')
-print(f"Created node: {node.path()}")
-```
-
-### Get Scene Information
-
-```
-What's the current state of my Houdini scene?
+```python
+import sys
+sys.path.insert(0, '/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/python')
+from houdini_rpc_service import start_server
+start_server()
 ```
 
-## Tools Available
+Or use the provided shelf tool: `MCP_Server.shelf` (add to your shelf and click to start).
+
+The RPC service runs on `http://localhost:9876` and must be running for the MCP server to work.
+
+### Example Interactions
+
+Once configured and the RPC service is running, interact with Houdini from OpenCode:
+
+```
+Create a geometry node with a sphere inside it
+```
+
+```
+What's the current frame and how many nodes are selected?
+```
+
+```
+Execute this code: 
+for i in range(5):
+    hou.node('/obj').createNode('geo', f'geo_{i}')
+```
+
+## Available Tools
 
 ### execute_python
 
-Execute arbitrary Python code within Houdini's context.
+Execute arbitrary Python code within Houdini's context with full `hou` module access.
 
 **Parameters:**
-- `code` (required): Python code to execute
+- `code` (string): Python code to execute
+
+**Returns:** Execution result or printed output
 
 **Example:**
 ```python
-# Create a sphere
 geo = hou.node('/obj').createNode('geo')
 sphere = geo.createNode('sphere')
-print(f"Created sphere at {sphere.path()}")
-
-# Query values
-frame = hou.frame()
-print(f"Current frame: {frame}")
-
-# Evaluate expressions
-_ = len(hou.selectedNodes())  # Return value
+sphere.parm('rad').set(2.5)
+print(f"Created {sphere.path()}")
 ```
 
 ### get_scene_info
 
 Get comprehensive information about the current Houdini scene.
 
+**Parameters:** None
+
 **Returns:**
 - Hip file path and name
-- Frame range and current frame
+- Frame range (start, end, current)
 - FPS
 - Selected nodes
-- Current working directory
+- Current working directory  
 - Houdini version
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 houdini-mcp-server/
-├── houdini_mcp_server.json    # Houdini package definition
-├── python/
-│   └── houdini_mcp_server.py  # MCP server implementation
-├── requirements.txt
-├── setup.py
-└── README.md
+├── .git/                          # Git repository
+├── .gitignore                     # Git ignore patterns
+├── houdini_mcp_server.json        # Houdini package definition
+├── MCP_Server.shelf               # Shelf tool to start RPC service
+├── START_IN_HOUDINI.py            # Copy-paste startup script
+├── README.md                      # This file
+├── venv/                          # Python virtual environment (mcp + httpx)
+└── python/
+    ├── houdini_mcp_server.py      # MCP server (runs in venv)
+    └── houdini_rpc_service.py     # RPC service (runs in Houdini)
 ```
-
-### Running Tests
-
-The server has been tested and verified working with Houdini 20.5.613 on macOS.
-
-To run the included test suite:
-
-```bash
-# Test server initialization
-hython houdini-mcp-server/test_server.py
-
-# Test all tools
-hython houdini-mcp-server/test_tools.py
-```
-
-**Test Results (Verified):**
-- ✅ execute_python: Successfully executes Python code in Houdini context
-- ✅ get_scene_info: Returns complete scene information including frame range, selected nodes, etc.
-- ✅ evaluate_expression: Evaluates both Python and Hscript expressions
-- ✅ Node creation: Can create and manipulate Houdini nodes programmatically
-
-You can also test it through OpenCode once configured:
-
-1. Configure OpenCode with the MCP server (see above)
-2. Restart OpenCode to load the server
-3. Send commands like "Create a geometry node in Houdini" or "What's the current frame?"
-
-### Adding New Tools
-
-To add new tools, edit `python/houdini_mcp_server.py`:
-
-1. Add a new `Tool` definition in the `list_tools()` handler
-2. Add the corresponding handler method (e.g., `_my_new_tool`)
-3. Add a case in the `call_tool()` handler
 
 ## Troubleshooting
 
-### "hou module not available"
+**RPC service not running:**
+- Start it in Houdini Python Shell using `START_IN_HOUDINI.py` or the shelf tool
+- Check that port 9876 is not already in use
 
-The server must run using Houdini's Python (hython or Houdini's bundled Python), not your system Python.
+**OpenCode shows server disconnected:**
+- Verify venv paths in `opencode.json` are correct
+- Check that venv has `mcp` and `httpx` installed: `venv/bin/pip list`
+- Restart OpenCode after config changes
 
-### MCP module not found
+**"Connection refused" errors:**
+- RPC service must be running inside Houdini before using MCP server
+- Verify RPC service is listening: `curl http://localhost:9876/execute -d '{"code":"print(123)"}'`
 
-Install the MCP SDK in Houdini's Python:
-```bash
-hython -m pip install mcp
-```
+## Known Limitations
 
-### Server not responding
+- RPC service must be manually started in Houdini each session (no auto-start)
+- Uses polling HTTP instead of WebSocket (adequate performance for typical usage)
+- Houdini's asyncio incompatibility prevents running MCP server directly in hython
 
-Check that:
-1. Houdini is running
-2. The paths in your OpenCode MCP configuration are correct
-3. The server script has execute permissions
+## Tested Environment
+
+- macOS
+- Houdini 20.5.613
+- Python 3.11 (venv)
+- OpenCode with MCP support
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please submit pull requests or open issues.
