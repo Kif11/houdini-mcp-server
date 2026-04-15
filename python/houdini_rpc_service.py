@@ -32,8 +32,6 @@ class HoudiniRPCHandler(BaseHTTPRequestHandler):
                 result = self.execute_python(params.get('code', ''))
             elif method == 'get_scene_info':
                 result = self.get_scene_info()
-            elif method == 'evaluate_expression':
-                result = self.evaluate_expression(params)
             else:
                 result = {'error': f'Unknown method: {method}'}
             
@@ -85,20 +83,6 @@ class HoudiniRPCHandler(BaseHTTPRequestHandler):
             "pwd": hou.pwd().path() if hou.pwd() else "/",
             "houdini_version": hou.applicationVersionString(),
         }
-    
-    def evaluate_expression(self, params):
-        """Evaluate a Houdini expression"""
-        expression = params.get('expression', '')
-        expr_lang = params.get('expression_language', 'python')
-        
-        try:
-            if expr_lang == 'python':
-                result = eval(expression, {"hou": hou})
-            else:
-                result = hou.hscriptExpression(expression)
-            return {'result': str(result)}
-        except Exception as e:
-            return {'error': str(e)}
 
 
 def start_rpc_server(port=9876):

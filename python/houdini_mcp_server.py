@@ -75,29 +75,6 @@ class HoudiniMCPServer:
                         "type": "object",
                         "properties": {}
                     }
-                ),
-                Tool(
-                    name="evaluate_expression",
-                    description=(
-                        "Evaluate a Houdini expression (Hscript or Python) and return the result. "
-                        "Useful for querying parameter values, variables, etc."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "expression": {
-                                "type": "string",
-                                "description": "The expression to evaluate"
-                            },
-                            "expression_language": {
-                                "type": "string",
-                                "enum": ["hscript", "python"],
-                                "description": "Expression language (default: python)",
-                                "default": "python"
-                            }
-                        },
-                        "required": ["expression"]
-                    }
                 )
             ]
         
@@ -116,8 +93,6 @@ class HoudiniMCPServer:
                     result = await self._execute_python(arguments)
                 elif name == "get_scene_info":
                     result = await self._get_scene_info(arguments)
-                elif name == "evaluate_expression":
-                    result = await self._evaluate_expression(arguments)
                 else:
                     result = f"Error: Unknown tool '{name}'"
                 
@@ -205,26 +180,6 @@ class HoudiniMCPServer:
             pass
         
         return json.dumps(info, indent=2)
-    
-    async def _evaluate_expression(self, args: Dict[str, Any]) -> str:
-        """Evaluate a Houdini expression"""
-        expression = args.get("expression", "")
-        expr_lang = args.get("expression_language", "python")
-        
-        if not expression:
-            return "Error: No expression provided"
-        
-        try:
-            if expr_lang == "python":
-                # Evaluate as Python expression
-                result = eval(expression, {"hou": hou})
-            else:
-                # Evaluate as Hscript expression
-                result = hou.hscriptExpression(expression)
-            
-            return str(result)
-        except Exception as e:
-            return f"Error evaluating expression: {str(e)}"
     
     async def run(self):
         """Run the MCP server using stdio transport"""

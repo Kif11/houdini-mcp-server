@@ -8,7 +8,18 @@ This server runs within Houdini's Python environment and provides access to Houd
 
 - **execute_python**: Execute arbitrary Python code within Houdini's context with full access to the `hou` module
 - **get_scene_info**: Get information about the current Houdini scene
-- **evaluate_expression**: Evaluate Houdini expressions (Hscript or Python)
+
+## Architecture
+
+Due to Houdini's custom asyncio implementation being incompatible with the MCP SDK, this server uses an HTTP bridge architecture:
+
+```
+OpenCode ←→ MCP Server (HTTP Bridge) ←→ Houdini RPC Service ←→ Houdini
+         stdio                  HTTP                    Python API
+```
+
+- **MCP Server** (`houdini_mcp_server_http.py`) - Runs with standard Python, handles MCP protocol
+- **Houdini RPC Service** (`houdini_rpc_service.py`) - Runs inside Houdini, executes commands
 
 ## Installation
 
@@ -93,12 +104,6 @@ print(f"Created node: {node.path()}")
 What's the current state of my Houdini scene?
 ```
 
-### Evaluate Expressions
-
-```
-Evaluate the expression: hou.frame()
-```
-
 ## Tools Available
 
 ### execute_python
@@ -107,7 +112,6 @@ Execute arbitrary Python code within Houdini's context.
 
 **Parameters:**
 - `code` (required): Python code to execute
-- `return_type` (optional): How to format the return value (`auto`, `string`, `json`)
 
 **Example:**
 ```python
@@ -115,6 +119,13 @@ Execute arbitrary Python code within Houdini's context.
 geo = hou.node('/obj').createNode('geo')
 sphere = geo.createNode('sphere')
 print(f"Created sphere at {sphere.path()}")
+
+# Query values
+frame = hou.frame()
+print(f"Current frame: {frame}")
+
+# Evaluate expressions
+_ = len(hou.selectedNodes())  # Return value
 ```
 
 ### get_scene_info
@@ -128,14 +139,6 @@ Get comprehensive information about the current Houdini scene.
 - Selected nodes
 - Current working directory
 - Houdini version
-
-### evaluate_expression
-
-Evaluate a Houdini expression.
-
-**Parameters:**
-- `expression` (required): The expression to evaluate
-- `expression_language` (optional): `python` or `hscript` (default: `python`)
 
 ## Development
 

@@ -63,29 +63,6 @@ class HoudiniMCPServerHTTP:
                         "type": "object",
                         "properties": {}
                     }
-                ),
-                Tool(
-                    name="evaluate_expression",
-                    description=(
-                        "Evaluate a Houdini expression (Hscript or Python) and return the result. "
-                        "Useful for querying parameter values, variables, etc."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "expression": {
-                                "type": "string",
-                                "description": "The expression to evaluate"
-                            },
-                            "expression_language": {
-                                "type": "string",
-                                "enum": ["hscript", "python"],
-                                "description": "Expression language (default: python)",
-                                "default": "python"
-                            }
-                        },
-                        "required": ["expression"]
-                    }
                 )
             ]
         
