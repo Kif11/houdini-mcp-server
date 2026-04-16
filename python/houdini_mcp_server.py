@@ -67,6 +67,40 @@ class HoudiniMCPServerHTTP:
                         "type": "object",
                         "properties": {}
                     }
+                ),
+                Tool(
+                    name="get_context_as_mermaid",
+                    description=(
+                        "Get a Houdini network context as a Mermaid diagram. "
+                        "Shows node graph structure with connections in Mermaid graph format."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "context_path": {
+                                "type": "string",
+                                "description": "Path to the context node (e.g. '/obj', '/obj/geo1'). Defaults to '/obj'",
+                                "default": "/obj"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_node_errors",
+                    description=(
+                        "Get all node errors and warnings for a specified Houdini graph context. "
+                        "Recursively checks all nodes in the context and returns detailed error information."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "context_path": {
+                                "type": "string",
+                                "description": "Path to the context node (e.g. '/obj', '/obj/geo1'). Defaults to '/obj'",
+                                "default": "/obj"
+                            }
+                        }
+                    }
                 )
             ]
         

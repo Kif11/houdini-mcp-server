@@ -33,6 +33,10 @@ class HoudiniRPCHandler(BaseHTTPRequestHandler):
                 result = self.execute_python(params.get('code', ''))
             elif method == 'get_scene_info':
                 result = self.get_scene_info()
+            elif method == 'get_context_as_mermaid':
+                result = self.get_context_as_mermaid(params.get('context_path', '/obj'))
+            elif method == 'get_node_errors':
+                result = self.get_node_errors(params.get('context_path', '/obj'))
             else:
                 result = {'error': f'Unknown method: {method}'}
             
@@ -97,6 +101,144 @@ class HoudiniRPCHandler(BaseHTTPRequestHandler):
             return {
                 'error': f"Failed to get scene info: {type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
             }
+    
+    def get_context_as_mermaid(self, context_path):
+        """Get network context as Mermaid diagram"""
+        try:
+            context = hou.node(context_path)
+            if not context:
+                return {'error': f'Context node not found: {context_path}'}
+            
+            # Start mermaid diagram
+            lines = ["graph TD"]
+            
+            # Get all children nodes
+            children = context.children()
+            
+            if not children:
+                return {'result': f"graph TD\n  empty[No nodes in {context_path}]"}
+            
+            # Track which nodes have been mentioned
+            declared_nodes = set()
+            
+            # Build diagram
+            for node in children:
+                node_id = node.name()
+                node_type = node.type().name()
+                
+                # Add connections
+                inputs = node.inputs()
+                if inputs:
+                    for input_node in inputs:
+                        if input_node:  # Check if input is connected
+                            input_id = input_node.name()
+                            input_type = input_node.type().name()
+                            lines.append(f"  {input_id}[{input_type}] --> {node_id}[{node_type}]")
+                            declared_nodes.add(input_id)
+                            declared_nodes.add(node_id)
+            
+            # Add standalone nodes (no connections)
+            for node in children:
+                if node.name() not in declared_nodes:
+                    lines.append(f"  {node.name()}[{node.type().name()}]")
+            
+            mermaid_diagram = "\n".join(lines)
+            return {'result': mermaid_diagram}
+            
+        except Exception as e:
+            import traceback
+            return {
+                'error': f"Failed to generate mermaid diagram: {type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            }
+    
+    def get_node_errors(self, context_path='/obj'):
+        """
+        Get all node errors for a specified Houdini graph context.
+        
+        Args:
+            context_path (str): Path to the context node (e.g. '/obj', '/obj/geo1')
+            
+        Returns:
+            dict: Dictionary with structure:
+                {
+                    'context': str,
+                    'total_errors': int,
+                    'total_warnings': int,
+                    'nodes_with_errors': list of dict with:
+                        {
+                            'path': str,
+                            'name': str,
+                            'type': str,
+                            'errors': list of str,
+                            'warnings': list of str
+                        }
+                }
+        """
+        context = hou.node(context_path)
+        if not context:
+            return {
+                'error': f'Context node not found: {context_path}',
+                'context': context_path,
+                'total_errors': 0,
+                'total_warnings': 0,
+                'nodes_with_errors': []
+            }
+        
+        nodes_with_issues = []
+        total_errors = 0
+        total_warnings = 0
+        
+        # Recursively check all nodes in the context
+        def check_node(node):
+            nonlocal total_errors, total_warnings
+            
+            errors = []
+            warnings = []
+            
+            # Get node errors
+            try:
+                if node.errors():
+                    errors = [node.errors()]
+                    total_errors += 1
+            except:
+                pass
+                
+            # Get node warnings
+            try:
+                if node.warnings():
+                    warnings = [node.warnings()]
+                    total_warnings += 1
+            except:
+                pass
+            
+            # If node has errors or warnings, add to list
+            if errors or warnings:
+                nodes_with_issues.append({
+                    'path': node.path(),
+                    'name': node.name(),
+                    'type': node.type().name(),
+                    'errors': errors,
+                    'warnings': warnings
+                })
+            
+            # Recursively check children
+            try:
+                for child in node.children():
+                    check_node(child)
+            except:
+                pass
+        
+        # Start checking from context
+        check_node(context)
+        
+        return {
+            'result': {
+                'context': context_path,
+                'total_errors': total_errors,
+                'total_warnings': total_warnings,
+                'nodes_with_errors': nodes_with_issues
+            }
+        }
 
 
 class StoppableHTTPServer(HTTPServer):
