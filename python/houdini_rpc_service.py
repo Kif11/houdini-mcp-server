@@ -65,25 +65,38 @@ class HoudiniRPCHandler(BaseHTTPRequestHandler):
                 'output': output,
                 'result': str(result) if result is not None else None
             }
+        except Exception as e:
+            import traceback
+            error_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            return {
+                'error': error_msg,
+                'output': captured_output.getvalue()
+            }
         finally:
             sys.stdout = old_stdout
     
     def get_scene_info(self):
         """Get current scene information"""
-        return {
-            "hip_file": hou.hipFile.path(),
-            "hip_name": hou.hipFile.basename(),
-            "is_saved": not hou.hipFile.hasUnsavedChanges(),
-            "frame_range": {
-                "start": hou.playbar.playbackRange()[0],
-                "end": hou.playbar.playbackRange()[1],
-                "current": hou.frame()
-            },
-            "fps": hou.fps(),
-            "selected_nodes": [node.path() for node in hou.selectedNodes()],
-            "pwd": hou.pwd().path() if hou.pwd() else "/",
-            "houdini_version": hou.applicationVersionString(),
-        }
+        try:
+            return {
+                "hip_file": hou.hipFile.path(),
+                "hip_name": hou.hipFile.basename(),
+                "is_saved": not hou.hipFile.hasUnsavedChanges(),
+                "frame_range": {
+                    "start": hou.playbar.playbackRange()[0],
+                    "end": hou.playbar.playbackRange()[1],
+                    "current": hou.frame()
+                },
+                "fps": hou.fps(),
+                "selected_nodes": [node.path() for node in hou.selectedNodes()],
+                "pwd": hou.pwd().path() if hou.pwd() else "/",
+                "houdini_version": hou.applicationVersionString(),
+            }
+        except Exception as e:
+            import traceback
+            return {
+                'error': f"Failed to get scene info: {type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            }
 
 
 class StoppableHTTPServer(HTTPServer):
