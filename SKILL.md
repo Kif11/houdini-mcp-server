@@ -46,20 +46,25 @@ geo.layoutChildren()
 
 Scene info as plain text.
 
-### `hctl mermaid [path]`
+### `hctl dot [path]`
 
-Network as Mermaid diagram. Default: `/obj`.
+Network as Graphviz DOT graph. Default: `/obj`.
+
+```sh
+hctl dot /obj/geo1
+hctl dot /obj/geo1 | dot -Tpng -o graph.png
+```
 
 ### `hctl errors [path]`
 
-Node errors as JSON. Default: `/obj`.
+Node errors. Default: `/obj`.
 
 ## Raw curl
 
 ```sh
 curl http://localhost:9876/scene
 curl -X POST http://localhost:9876/exec -d "hou.hipFile.path()"
-curl http://localhost:9876/mermaid?path=/obj/geo1
+curl http://localhost:9876/dot?path=/obj/geo1
 curl http://localhost:9876/errors?path=/obj
 ```
 

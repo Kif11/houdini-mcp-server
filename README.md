@@ -36,8 +36,9 @@ hctl exec "[n.path() for n in hou.selectedNodes()]"
 # Scene info
 hctl scene
 
-# Network as Mermaid diagram
-hctl mermaid /obj/geo1
+# Network as Graphviz DOT graph
+hctl dot /obj/geo1
+hctl dot /obj/geo1 | dot -Tpng -o graph.png
 
 # Node errors
 hctl errors /obj
@@ -48,7 +49,7 @@ hctl errors /obj
 ```sh
 curl http://localhost:9876/scene
 curl -X POST http://localhost:9876/exec -d "hou.hipFile.path()"
-curl http://localhost:9876/mermaid?path=/obj/geo1
+curl http://localhost:9876/dot?path=/obj/geo1
 curl http://localhost:9876/errors?path=/obj
 ```
 
