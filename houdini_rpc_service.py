@@ -7,14 +7,13 @@ Endpoints:
   POST /exec         - body is raw Python code, returns stdout
   GET  /scene        - scene info as plain text
   GET  /mermaid?path - network as Mermaid diagram
-  GET  /errors?path  - node errors as JSON
+  GET  /errors?path  - node errors as plain text
   GET  /             - this help text
 """
 
 import hou
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-import json
 import sys
 from io import StringIO
 import threading
@@ -136,10 +135,10 @@ class HoudiniHandler(BaseHTTPRequestHandler):
         try:
             context = hou.node(context_path)
             if not context:
-                self._json(404, {'error': f'Node not found: {context_path}'})
+                self._text(404, f'Node not found: {context_path}')
                 return
 
-            issues = []
+            lines = []
             total_err = 0
             total_warn = 0
 
@@ -149,21 +148,18 @@ class HoudiniHandler(BaseHTTPRequestHandler):
                     errs = node.errors()
                     if errs:
                         total_err += 1
-                        issues.append({'path': node.path(), 'type': node.type().name(),
-                                       'errors': list(errs), 'warnings': []})
+                        lines.append(f'ERROR  {node.path()} ({node.type().name()})')
+                        for e in errs:
+                            lines.append(f'  {e}')
                 except Exception:
                     pass
                 try:
                     warns = node.warnings()
                     if warns:
                         total_warn += 1
-                        # merge if already added
-                        existing = next((i for i in issues if i['path'] == node.path()), None)
-                        if existing:
-                            existing['warnings'] = list(warns)
-                        else:
-                            issues.append({'path': node.path(), 'type': node.type().name(),
-                                           'errors': [], 'warnings': list(warns)})
+                        lines.append(f'WARN   {node.path()} ({node.type().name()})')
+                        for w in warns:
+                            lines.append(f'  {w}')
                 except Exception:
                     pass
                 try:
@@ -173,14 +169,14 @@ class HoudiniHandler(BaseHTTPRequestHandler):
                     pass
 
             walk(context)
-            self._json(200, {
-                'context': context_path,
-                'total_errors': total_err,
-                'total_warnings': total_warn,
-                'nodes': issues,
-            })
+
+            if not lines:
+                self._text(200, f'{context_path}: no errors or warnings')
+            else:
+                header = f'{context_path}: {total_err} errors, {total_warn} warnings\n\n'
+                self._text(200, header + '\n'.join(lines))
         except Exception as e:
-            self._json(500, {'error': str(e)})
+            self._text(500, f'Error: {e}')
 
     # --- helpers ---
 
@@ -189,12 +185,6 @@ class HoudiniHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
         self.end_headers()
         self.wfile.write(body.encode('utf-8'))
-
-    def _json(self, code, obj):
-        self.send_response(code)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(obj).encode('utf-8'))
 
 
 class StoppableHTTPServer(HTTPServer):
