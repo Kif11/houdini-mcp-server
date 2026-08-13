@@ -7,37 +7,18 @@
 
   <tool name="start_rpc_server" label="Start RPC" icon="PLASMA_App">
     <script scriptType="python"><![CDATA[import sys
-sys.path.insert(0, '/Users/kif/dev/old/houdini-mcp-server')
-
+import sys
+sys.path.insert(0, '/Users/kif/dev/houdini-rpc-server')
 import houdini_rpc_service
-
-if hasattr(hou.session, 'rpc_server'):
-    server_info = hou.session.rpc_server
-    if isinstance(server_info, dict):
-        thread = server_info.get('thread')
-        if thread and thread.is_alive():
-            print("RPC Service already running on port 9876")
-        else:
-            hou.session.rpc_server = houdini_rpc_service.start_rpc_server_thread(port=9876)
-    else:
-        hou.session.rpc_server = houdini_rpc_service.start_rpc_server_thread(port=9876)
-else:
-    hou.session.rpc_server = houdini_rpc_service.start_rpc_server_thread(port=9876)
+houdini_rpc_service.start()
 ]]></script>
   </tool>
 
   <tool name="stop_rpc_server" label="Stop RPC" icon="PLASMA_Stop">
     <script scriptType="python"><![CDATA[import sys
-sys.path.insert(0, '/Users/kif/dev/old/houdini-mcp-server')
-
+sys.path.insert(0, '/Users/kif/dev/old/houdini-rpc-server')
 import houdini_rpc_service
-
-if hasattr(hou.session, 'rpc_server'):
-    server_info = hou.session.rpc_server
-    if houdini_rpc_service.stop_rpc_server(server_info):
-        delattr(hou.session, 'rpc_server')
-else:
-    print("RPC Service not running")
+houdini_rpc_service.stop()
 ]]></script>
   </tool>
 </shelfDocument>

@@ -206,7 +206,7 @@ class StoppableHTTPServer(HTTPServer):
             pass
 
 
-def start_rpc_server(port=9876, server_holder=None):
+def _start(port=9876, server_holder=None):
     server = StoppableHTTPServer(('localhost', port), HoudiniHandler)
     if server_holder is not None:
         server_holder['instance'] = server
@@ -215,16 +215,29 @@ def start_rpc_server(port=9876, server_holder=None):
     server.server_close()
 
 
-def start_rpc_server_thread(port=9876):
+def start_thread(port=9876):
     server_holder = {}
-    thread = threading.Thread(target=start_rpc_server, args=(port, server_holder), daemon=True)
+    thread = threading.Thread(target=_start, args=(port, server_holder), daemon=True)
     thread.start()
     import time
     time.sleep(0.1)
     return {'thread': thread, 'server_holder': server_holder, 'port': port}
 
+def start(port=9876):
+    if hasattr(hou.session, 'rpc_server'):
+        server_info = hou.session.rpc_server
+        if isinstance(server_info, dict):
+            thread = server_info.get('thread')
+            if thread and thread.is_alive():
+                print("RPC Service already running on port 9876")
+            else:
+                hou.session.rpc_server = start_thread(port=9876)
+        else:
+            hou.session.rpc_server = start_thread(port=9876)
+    else:
+        hou.session.rpc_server = start_thread(port=9876)
 
-def stop_rpc_server(server_info):
+def _stop(server_info):
     if not isinstance(server_info, dict):
         return False
     server = server_info.get('server_holder', {}).get('instance')
@@ -237,7 +250,14 @@ def stop_rpc_server(server_info):
         return True
     return False
 
+def stop():
+    if hasattr(hou.session, 'rpc_server'):
+        server_info = hou.session.rpc_server
+        if _stop(server_info):
+            delattr(hou.session, 'rpc_server')
+    else:
+        print("RPC Service not running")
 
 if __name__ == '__main__':
-    start_rpc_server_thread()
+    start_thread()
     print('RPC server running. Keep this Houdini session open.')
