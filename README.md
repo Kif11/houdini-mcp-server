@@ -1,113 +1,75 @@
-# Houdini MCP Server
+# Houdini CLI
 
-Control Houdini from AI assistants via the Model Context Protocol (MCP).
+Control a running Houdini instance from the terminal. No MCP, no Python venv, no JSON parsing. Just curl. Feed SKILL.md to your agent or mess with active Houdini session yourself from command line.
 
-## What It Does
+## How It Works
 
-Allows MCP-compatible AI tools (like OpenCode, Claude Desktop, etc.) to:
-- Execute Python code in Houdini with full `hou` module access
-- Query scene information (nodes, frames, selection, etc.)
-- Create and manipulate nodes programmatically
+```
+hctl.sh ←→ HTTP ←→ RPC Service ←→ Houdini
+ (curl)   :9876   (inside Houdini)
+```
 
 ## Install
 
-### 1. Clone this repo
-```bash
-cd ~/Library/Preferences/houdini/20.5/  # macOS
-git clone https://github.com/YOUR_USERNAME/houdini-mcp-server
+### 1. Copy shelf tool to Houdini
+
+```sh
+cp houdini_rpc.shelf ~/Library/Preferences/houdini/21.0/toolbar/
 ```
 
-### 2. Create Python venv and install dependencies
-```bash
-cd houdini-mcp-server
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-deactivate
-```
+### 2. Add `hctl.sh` to your PATH
 
-### 3. Install shelf tools (one-liner in Houdini Python Shell)
-```python
-exec(open('/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/install_mcp_shelf.py').read())
-```
-
-### 4. Configure your AI client
-
-**OpenCode** - Edit `~/.config/opencode/opencode.json` and add to the `mcp` section:
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "houdini": {
-      "type": "local",
-      "command": [
-        "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/venv/bin/python",
-        "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/python/houdini_mcp_server.py"
-      ],
-      "enabled": true
-    }
-  }
-}
-```
-
-More info at [official opencode docs](https://opencode.ai/docs/mcp-servers/).
-
-**Claude Desktop** (`~/.config/claude/claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "houdini": {
-      "command": "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/venv/bin/python",
-      "args": [
-        "/Users/YOUR_USERNAME/Library/Preferences/houdini/20.5/houdini-mcp-server/python/houdini_mcp_server.py"
-      ]
-    }
-  }
-}
+```sh
+ln -s /path/to/houdini-mcp-server/hctl.sh ~/.local/bin/hctl
 ```
 
 ## Usage
 
-1. **Start Houdini** and click the "Start MCP" shelf button
-2. **Start your AI client** (OpenCode, Claude Desktop, etc.) and make sure that Houdini MCP is enabled (in opencode `/mcps`)
-3. **Make a prompt with Houdini in mind** to control Houdini
+**Start Houdini** and click the **Start RPC** shelf button.
 
-### Examples
+```sh
+# Execute Python in Houdini
+hctl exec "hou.hipFile.path()"
+hctl exec "hou.node('/obj').createNode('box')"
+hctl exec "[n.path() for n in hou.selectedNodes()]"
 
-**Randomize poins**
+# Scene info
+hctl scene
+
+# Network as Mermaid diagram
+hctl mermaid /obj/geo1
+
+# Node errors
+hctl errors /obj
 ```
-For each scattered point randomize its size, rotation on Y and color.
+
+### Raw curl
+
+```sh
+curl http://localhost:9876/scene
+curl -X POST http://localhost:9876/exec -d "hou.hipFile.path()"
+curl http://localhost:9876/mermaid?path=/obj/geo1
+curl http://localhost:9876/errors?path=/obj
 ```
 
-This will most likely create a wrangler node with necessary expressions. 
+### Environment
 
-**Making special effects**
-```
-On currently selected point wrangler write vex that will display geometry by a wave that pass trough it as I scrub the timeline. Allow for editing wave amplitude, frequency, timing etc.
-```
-
-## Available Tools
-
-- **`execute_python`** - Run arbitrary Python code with `hou` module access
-- **`get_scene_info`** - Get hip file path, frame range, selected nodes, FPS, etc.
+- `HOUDINI_URL` — RPC endpoint (default: `http://localhost:9876`)
 
 ## Requirements
 
-- Houdini 20.5+ (tested on macOS)
-- Python 3.11+
-- MCP-compatible AI client
+- Houdini 20.5+
+- `curl`
 
-## Architecture
+## Files
 
-```
-AI Client ←→ MCP Server ←→ HTTP ←→ RPC Service ←→ Houdini
-         stdio      (venv)    :9876   (inside Houdini)
-```
+- **`hctl.sh`** — CLI wrapper, plain curl
+- **`houdini_rpc_service.py`** — runs inside Houdini, executes code with `hou` module access
+- **`houdini_rpc.shelf`** — shelf tool, copy to `~/Library/Preferences/houdini/<version>/toolbar/`
 
-- **`houdini_mcp_server.py`** - Runs outside Houdini in venv, handles MCP protocol
-- **`houdini_rpc_service.py`** - Runs inside Houdini, executes code with `hou` module access
+## Resources
 
-Uses HTTP bridge because Houdini's asyncio implementation is incompatible with MCP SDK.
+Inspired by https://github.com/OleksandrChekhovskyi/hax/blob/master/docs/philosophy.md
 
 ## License
 
