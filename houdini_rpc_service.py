@@ -6,7 +6,7 @@ This runs in the Houdini GUI's Python environment.
 Endpoints:
   POST /exec         - body is raw Python code, returns stdout
   GET  /scene        - scene info as plain text
-  GET  /mermaid?path - network as Mermaid diagram
+  GET  /dot?path    - network as Graphviz DOT graph
   GET  /errors?path  - node errors as plain text
   GET  /             - this help text
 """
@@ -34,9 +34,9 @@ class HoudiniHandler(BaseHTTPRequestHandler):
             self._text(200, __doc__.strip())
         elif path == '/scene':
             self._scene()
-        elif path == '/mermaid':
+        elif path == '/dot':
             ctx = qs.get('path', ['/obj'])[0]
-            self._mermaid(ctx)
+            self._dot(ctx)
         elif path == '/errors':
             ctx = qs.get('path', ['/obj'])[0]
             self._errors(ctx)
@@ -99,7 +99,7 @@ class HoudiniHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._text(500, str(e))
 
-    def _mermaid(self, context_path):
+    def _dot(self, context_path):
         try:
             context = hou.node(context_path)
             if not context:
@@ -108,10 +108,10 @@ class HoudiniHandler(BaseHTTPRequestHandler):
 
             children = context.children()
             if not children:
-                self._text(200, f'graph TD\n  empty[No nodes in {context_path}]')
+                self._text(200, f'digraph "{context_path}" {{}}')
                 return
 
-            lines = ['graph TD']
+            lines = [f'digraph "{context_path}" {{']
             declared = set()
 
             for node in children:
@@ -119,14 +119,17 @@ class HoudiniHandler(BaseHTTPRequestHandler):
                 ntype = node.type().name()
                 for inp in node.inputs():
                     if inp:
-                        lines.append(f'  {inp.name()}[{inp.type().name()}] --> {nid}[{ntype}]')
+                        lines.append(f'  {inp.name()} [label="{inp.type().name()}"];')
+                        lines.append(f'  {nid} [label="{ntype}"];')
+                        lines.append(f'  {inp.name()} -> {nid};')
                         declared.add(inp.name())
                         declared.add(nid)
 
             for node in children:
                 if node.name() not in declared:
-                    lines.append(f'  {node.name()}[{node.type().name()}]')
+                    lines.append(f'  {node.name()} [label="{node.type().name()}"];')
 
+            lines.append('}')
             self._text(200, '\n'.join(lines))
         except Exception as e:
             self._text(500, str(e))

@@ -5,7 +5,7 @@
 # Usage:
 #   hctl exec "hou.node('/obj').createNode('box')"
 #   hctl scene
-#   hctl mermaid /obj/geo1
+#   hctl dot /obj/geo1
 #   hctl errors /obj
 #
 # Environment:
@@ -31,9 +31,9 @@ case "${1:-}" in
     scene)
         curl -sf "$URL/scene"
         ;;
-    mermaid)
+    dot)
         ctx="${2:-/obj}"
-        curl -sf "$URL/mermaid?path=$ctx"
+        curl -sf "$URL/dot?path=$ctx"
         ;;
     errors)
         ctx="${2:-/obj}"
@@ -46,7 +46,7 @@ hctl - control a running Houdini instance
 Usage:
   hctl exec <code>    execute Python in Houdini (quote the string)
   hctl scene          show scene info (hip, frames, selection)
-  hctl mermaid [path] network as Mermaid diagram (default: /obj)
+  hctl dot [path]     network as Graphviz DOT graph (default: /obj)
   hctl errors [path]  list node errors (default: /obj)
 
 Raw curl:
